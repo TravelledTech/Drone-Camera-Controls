@@ -1,0 +1,6 @@
+names:
+- drone
+nc: 1
+path: C:/Users/wenta/Desktop/Drone-Camera-Controls/drone_dataset
+train: C:/Users/wenta/Desktop/Drone-Camera-Controls/drone_dataset/train
+val: C:/Users/wenta/Desktop/Drone-Camera-Controls/drone_dataset/valid
