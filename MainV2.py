@@ -12,7 +12,7 @@ import time
 # ---------------- SETTINGS ----------------
 STREAM_URL = "http://192.168.4.1:81/stream"
 YOLO_SKIP = 5               # YOLO every N frames
-CamToggle = True           # True = webcam, False = ESP32-CAM
+CamToggle = False          # True = webcam, False = ESP32-CAM
 MODEL_PATH = "best.pt"      # YOLO model
 # ------------------------------------------
 
@@ -59,10 +59,10 @@ class YOLOViewer:
         main_frame = ttk.Frame(root)
         main_frame.pack(fill="both", expand=True)
 
-        left_frame = ttk.Frame(main_frame, padding=10)
+        left_frame = ttk.Frame(main_frame, padding=5)
         left_frame.pack(side="left", fill="both", expand=True)
 
-        right_frame = ttk.Frame(main_frame, padding=10)
+        right_frame = ttk.Frame(main_frame, padding=5)
         right_frame.pack(side="right", fill="y")
 
         # Video Label
@@ -71,10 +71,10 @@ class YOLOViewer:
 
         txt = ttk.Label( right_frame,
                         text="Control Panel",
-                        foreground="lightgray",
-                        font=("Segoe UI", 14, "bold underline")
+                        foreground="white",
+                        font=("Segoe UI", 16, "bold")
                         )
-        txt.pack(pady=15)     
+        txt.pack(pady=5)     
 
         # Buttons
         ttk.Button(right_frame, text="Start", width=15, command=self.start_stream).pack(pady=5, fill="x")
@@ -89,8 +89,8 @@ class YOLOViewer:
             right_frame,
             text="Enable YOLO",
             variable=self.yolo_var,
-            command=self.toggle_yolo_mode
-        ).pack(anchor="w", pady=5)
+            command=self.toggle_yolo_mode,
+        ).pack(anchor="center", pady=5)
 
         ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=10)
 
@@ -107,7 +107,7 @@ class YOLOViewer:
                 text="Arm Net",
                 variable=self.arm_var,
                 command=self.toggle_arm_mode
-            ).pack(anchor="w", pady=5)
+            ).pack(anchor="center", pady=5)
 
             ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=10)
 
@@ -126,8 +126,16 @@ class YOLOViewer:
             wraplength=100,
             justify="center"
         )
-        self.status.pack(pady=(10, 0))
-
+        self.status.pack(pady=(5))
+        
+        ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=5)
+        
+        img = Image.open("logo.png")       # your image file
+        img = img.resize((120,58))
+        self.gui_img = ImageTk.PhotoImage(img)
+    
+        self.img_label = ttk.Label(right_frame, image=self.gui_img)
+        self.img_label.pack(pady=12)
 
     # ---------- Streaming Thread ----------
     def stream_thread(self):
