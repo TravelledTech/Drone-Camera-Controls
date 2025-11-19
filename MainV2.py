@@ -11,16 +11,13 @@ import time
 
 # ---------------- SETTINGS ----------------
 STREAM_URL = "http://192.168.4.1:81/stream"
-YOLO_SKIP = 5               # YOLO every N frames
-CamToggle = False          # True = webcam, False = ESP32-CAM
-MODEL_PATH = "best.pt"      # YOLO model
+YOLO_SKIP = 20          # Number of frames skipped until YOLO runs
+CamToggle = False       # False = ESP32, True = webcam
+MODEL_PATH = "best.pt"  # Model used
 # ------------------------------------------
 
-isArmed = False     # Checks if net is armed (for camera detection)
-confidence = 70     # Confidence Level of Cam
-hasToggle = True    # Only allows 1 trigger of the drop (with cam), Resets on start button
 
-# ---- Non-blocking ESP32 availability test ----
+# ---- ESP32 STREAM CHECK ----
 def is_stream_available(url):
     try:
         host = url.split("/")[2].split(":")[0]
@@ -32,23 +29,29 @@ def is_stream_available(url):
         return False
 
 
+
 # ------------------ MAIN CLASS ------------------
 class YOLOViewer:
-    def __init__(self, root):
-        self.has_shown_streaming = False
-        self.root = root
-        self.running = False
-        self.cap = None
-        self.frame_count = 0
 
-        # Store last YOLO results (for non-flashing boxes)
+    def __init__(self, root):
+
+        # Initial Variables
+        self.hasToggle = True        # one-shot trigger
+        self.isArmed = False         # remote arming state
+        self.confidence = 0.60       # trigger threshold MAKE SURE ITS DECIMAL
+        self.running = False
+        self.frame_count = 0
+        self.cap = None
         self.last_boxes = None
         self.last_labels = None
+        self.has_shown_streaming = False
 
-        # Load YOLO model
+        self.root = root
+
+        # Load YOLO
         self.model = YOLO(MODEL_PATH).to("cpu")
 
-        # GUI Setup
+        # GUI Layout
         root.title("Detection Cam")
         root.geometry("900x560")
 
@@ -59,89 +62,78 @@ class YOLOViewer:
         main_frame = ttk.Frame(root)
         main_frame.pack(fill="both", expand=True)
 
+        # 2 frames within the frame (one for camera feed and other for controls)
         left_frame = ttk.Frame(main_frame, padding=5)
         left_frame.pack(side="left", fill="both", expand=True)
 
         right_frame = ttk.Frame(main_frame, padding=5)
         right_frame.pack(side="right", fill="y")
 
-        # Video Label
+        # Video feed
         self.video_label = ttk.Label(left_frame)
         self.video_label.pack(expand=True, fill="both")
 
-        txt = ttk.Label( right_frame,
-                        text="Control Panel",
-                        foreground="white",
-                        font=("Segoe UI", 16, "bold")
-                        )
-        txt.pack(pady=5)     
+        ttk.Label(right_frame, text="Control Panel",
+                  foreground="white",
+                  font=("Segoe UI", 16, "bold")).pack(pady=5)
 
         # Buttons
         ttk.Button(right_frame, text="Start", width=15, command=self.start_stream).pack(pady=5, fill="x")
         ttk.Button(right_frame, text="Stop", width=15, command=self.stop_stream).pack(pady=5, fill="x")
         ttk.Button(right_frame, text="Exit", width=15, command=self.quit_app).pack(pady=5, fill="x")
 
-        ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=10)
+        ttk.Separator(right_frame).pack(fill="x", pady=10)
 
-        # YOLO Toggle
+        # YOLO toggle
         self.yolo_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            right_frame,
-            text="Enable YOLO",
-            variable=self.yolo_var,
-            command=self.toggle_yolo_mode,
-        ).pack(anchor="center", pady=5)
+        ttk.Checkbutton(right_frame, text="Enable YOLO",
+                        variable=self.yolo_var,
+                        command=self.toggle_yolo_mode).pack(anchor="center", pady=5)
 
-        ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=10)
+        ttk.Separator(right_frame).pack(fill="x", pady=10)
 
-        # ESP32-only buttons
+        # ESP32-only UI
         if not CamToggle:
             ttk.Button(right_frame, text="Deploy", width=15, command=self.deploy_action).pack(pady=5, fill="x")
             ttk.Button(right_frame, text="Drop", width=15, command=self.drop_action).pack(pady=5, fill="x")
 
-            ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=10)
+            ttk.Separator(right_frame).pack(fill="x", pady=10)
 
             self.arm_var = tk.BooleanVar()
-            ttk.Checkbutton(
-                right_frame,
-                text="Arm Net",
-                variable=self.arm_var,
-                command=self.toggle_arm_mode
-            ).pack(anchor="center", pady=5)
+            ttk.Checkbutton(right_frame, text="Arm Net",
+                            variable=self.arm_var,
+                            command=self.toggle_arm_mode).pack(anchor="center", pady=5)
 
-            ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=10)
+            ttk.Separator(right_frame).pack(fill="x", pady=10)
 
-        txt = ttk.Label( right_frame,
-                        text="Latest Status",
-                        foreground="lightgray",
-                        font=("Segoe UI", 10, "bold")
-                        )
-        txt.pack()       
+        ttk.Label(right_frame, text="Latest Status",
+                  foreground="lightgray",
+                  font=("Segoe UI", 10, "bold")).pack()
 
-        # Status label
-        self.status = ttk.Label(
-            right_frame,
-            text="Status: Idle",
-            foreground="gray",
-            wraplength=100,
-            justify="center"
-        )
-        self.status.pack(pady=(5))
-        
-        ttk.Separator(right_frame, orient="horizontal").pack(fill="x", pady=5)
-        
-        img = Image.open("logo.png")       # your image file
-        img = img.resize((120,58))
-        self.gui_img = ImageTk.PhotoImage(img)
-    
-        self.img_label = ttk.Label(right_frame, image=self.gui_img)
-        self.img_label.pack(pady=12)
+        # Display the latest status
+        self.status = ttk.Label(right_frame, text="Status: Idle",
+                                foreground="gray",
+                                wraplength=100,
+                                justify="center")
+        self.status.pack(pady=5)
 
-    # ---------- Streaming Thread ----------
+        ttk.Separator(right_frame).pack(fill="x", pady=5)
+
+        # Logo (why not)
+        try:
+            img = Image.open("logo.png").resize((120, 58))
+            self.gui_img = ImageTk.PhotoImage(img)
+            ttk.Label(right_frame, image=self.gui_img).pack(pady=12)
+        except:
+            pass
+
+
+    # ---------- STREAM THREAD ----------
     def stream_thread(self):
-        while self.running:
-            ret, frame = self.cap.read()
 
+        while self.running:
+
+            ret, frame = self.cap.read()
             if not ret:
                 self.status.config(text="No feed (camera offline)", foreground="red")
                 time.sleep(0.2)
@@ -151,61 +143,59 @@ class YOLOViewer:
                 self.status.config(text="Streaming", foreground="green")
                 self.has_shown_streaming = True
 
-            # Convert BGR → RGB
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Clear boxes when YOLO is disabled
-            if not self.yolo_var.get():
-                self.last_boxes = None
-
+            # YOLO run scheduling
             self.frame_count += 1
             run_yolo = self.yolo_var.get() and (self.frame_count % YOLO_SKIP == 0)
 
-            # Run YOLO if enabled
             if run_yolo:
                 results = self.model(frame_rgb, verbose=False)
-                boxes = results[0].boxes
-                self.last_boxes = boxes
+                self.last_boxes = results[0].boxes
                 self.last_labels = results[0].names
 
-            # Draw the annotated frame
             annotated = frame_rgb.copy()
 
-            # Draw stored YOLO boxes only if YOLO is enabled
+            # Draw YOLO boxes (So bounding box stays shown in between YOLO frames)
             if self.yolo_var.get() and self.last_boxes is not None:
+
                 for box in self.last_boxes:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-                    conf = box.conf[0].item()
+                    conf = float(box.conf[0])
                     cls = int(box.cls[0])
                     label = f"{self.last_labels[cls]} {conf:.2f}"
 
-                    # Draw bounding box
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(annotated, label, (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                (0, 255, 0), 2)
 
-                    # Draw label
-                    cv2.putText(
-                        annotated, label, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                        (0, 255, 0), 2
-                    )
+                    #--------- CAMERA TRIGGER ---------
                     
-                    # Send signal if detection is over a certain level
-                    print(float(boxes.conf[0]))
-                    if float(boxes.conf[0]) > confidence and isArmed and hasToggle:
+                    #print("---- TRIGGER CHECK ----")
+                    print("conf =", conf*100)
+                    #print("threshold =", self.confidence)
+                    #print("isArmed =", self.isArmed)
+                    #print("hasToggle =", self.hasToggle)
+                    #print("------------------------")
+                    
+                    # Checks:
+                    # If confidence is high enough
+                    # If trigger has been armed
+                    # If it has been triggered before (only 1 trigger before reset)
+                    if conf > self.confidence and self.isArmed and self.hasToggle:
                         try:
                             requests.get("http://192.168.4.1/deploy", timeout=2)
                             self.status.config(text="Deploy signal sent", foreground="cyan")
                         except Exception as e:
                             self.status.config(text="Deploy failed", foreground="red")
                             print(e)
-                        hasToggle = False
+
+                        self.hasToggle = False     # one-shot works properly now
 
             # Convert to Tkinter image
-            img = Image.fromarray(annotated)
-            img = img.resize((640, 480))
+            img = Image.fromarray(annotated).resize((640, 480))
             tk_img = ImageTk.PhotoImage(img)
-
-            # Update GUI
             self.root.after(0, self.update_frame, tk_img)
 
         if self.cap:
@@ -217,23 +207,23 @@ class YOLOViewer:
         self.video_label.configure(image=tk_img)
 
 
-    # ---------- Start Button ----------
+
+    # ---------- BUTTON HANDLERS ----------
+    # Start stream button
     def start_stream(self):
-        self.has_shown_streaming = False
-        hasToggle = True
+        self.hasToggle = True    # reset one-shot
+
         if self.running:
             return
 
         self.status.config(text="Checking camera...", foreground="orange")
         self.root.update_idletasks()
 
-        # ESP32 Mode → check first
-        if not CamToggle:
-            if not is_stream_available(STREAM_URL):
-                self.status.config(text="ESP32 offline", foreground="red")
-                return
+        if not CamToggle and not is_stream_available(STREAM_URL):
+            self.status.config(text="ESP32 offline", foreground="red")
+            return
 
-        # Create VideoCapture
+        # Open camera
         if CamToggle:
             self.cap = cv2.VideoCapture(0)
         else:
@@ -247,30 +237,28 @@ class YOLOViewer:
         threading.Thread(target=self.stream_thread, daemon=True).start()
 
 
-    # ---------- Stop Button ----------
     def stop_stream(self):
         self.running = False
+        self.hasToggle = True
         self.status.config(text="Stopped", foreground="orange")
 
 
-    # ---------- Quit ----------
     def quit_app(self):
         self.running = False
         self.root.destroy()
 
-
-    # ---------- YOLO Toggle ----------
+    # Enable and disable YOLO for better performance
     def toggle_yolo_mode(self):
         if self.yolo_var.get():
-            print("YOLO Enabled")
             self.status.config(text="YOLO Enabled", foreground="lime")
         else:
-            print("YOLO Disabled")
             self.last_boxes = None
             self.status.config(text="YOLO Disabled", foreground="orange")
 
 
+
     # ---------- ESP32 COMMANDS ----------
+    #Command to deploy net
     def deploy_action(self):
         try:
             requests.get("http://192.168.4.1/deploy", timeout=2)
@@ -279,28 +267,33 @@ class YOLOViewer:
             self.status.config(text="Deploy failed", foreground="red")
             print(e)
 
+    # Command to drop the net (after deploy)
     def drop_action(self):
         try:
-            requests.get("http://192.168.4.1/drop", timeout=2)
+            requests.get("http://192.168.4.1/release", timeout=2)
             self.status.config(text="Drop signal sent", foreground="cyan")
         except Exception as e:
             self.status.config(text="Drop failed", foreground="red")
             print(e)
 
+    # Arm net (really only for automatic stuff, doesnt effect manual deploy)
     def toggle_arm_mode(self):
         try:
             if self.arm_var.get():
+                self.isArmed = True
                 requests.get("http://192.168.4.1/on", timeout=2)
                 self.status.config(text="Net Armed", foreground="cyan")
             else:
+                self.isArmed = False
                 requests.get("http://192.168.4.1/off", timeout=2)
                 self.status.config(text="Net unArmed", foreground="orange")
         except Exception as e:
             self.status.config(text="Net Arming Failed", foreground="red")
-            print("Auto toggle error:", e)
+            print(e)
 
 
-# ---------------- RUN APP ----------------
+
+# ---------------- RUN ----------------
 root = tk.Tk()
 app = YOLOViewer(root)
 root.mainloop()
