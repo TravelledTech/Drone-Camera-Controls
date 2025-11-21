@@ -11,9 +11,10 @@ import time
 
 # ---------------- SETTINGS ----------------
 STREAM_URL = "http://192.168.4.1:81/stream"
-YOLO_SKIP = 5          # Number of frames skipped until YOLO runs
+YOLO_SKIP = 20          # Number of frames skipped until YOLO runs
 CamToggle = True       # False = ESP32, True = webcam
-MODEL_PATH = "best2.pt"  # Model used
+MODEL_PATH = "best.pt"  # Model used (best.pt and best2.pt)
+# Second is way better at detection but uses more computation power
 # ------------------------------------------
 
 
