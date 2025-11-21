@@ -11,9 +11,9 @@ import time
 
 # ---------------- SETTINGS ----------------
 STREAM_URL = "http://192.168.4.1:81/stream"
-YOLO_SKIP = 20          # Number of frames skipped until YOLO runs
-CamToggle = False       # False = ESP32, True = webcam
-MODEL_PATH = "best.pt"  # Model used
+YOLO_SKIP = 5          # Number of frames skipped until YOLO runs
+CamToggle = True       # False = ESP32, True = webcam
+MODEL_PATH = "best2.pt"  # Model used
 # ------------------------------------------
 
 
@@ -49,7 +49,7 @@ class YOLOViewer:
         self.root = root
 
         # Load YOLO
-        self.model = YOLO(MODEL_PATH).to("cpu")
+        self.model = YOLO(MODEL_PATH)
 
         # GUI Layout
         root.title("Detection Cam")
