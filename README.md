@@ -14,3 +14,5 @@ Remaining files are leftover files from previous tests.
 
 
 For the record the two models made are not very good due to the limited computing power while training.
+
+Also travelledtech is the personal gmail of Wentao
